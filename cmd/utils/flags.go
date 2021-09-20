@@ -41,6 +41,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/clique"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/custom"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -108,6 +109,14 @@ func printHelp(out io.Writer, templ string, data interface{}) {
 
 var (
 	// General settings
+	PubsubTopicFlag = cli.StringFlag{
+		Name:  "pubsub-topic",
+		Usage: "PubSub Topic",
+	}
+	PubsubProjectIDFlag = cli.StringFlag{
+		Name:  "pubsub-id",
+		Usage: "PubSub Project Id",
+	}
 	DataDirFlag = DirectoryFlag{
 		Name:  "datadir",
 		Usage: "Data directory for the databases and keystore",
@@ -1752,7 +1761,7 @@ func SetDNSDiscoveryDefaults(cfg *ethconfig.Config, genesis common.Hash) {
 // RegisterEthService adds an Ethereum client to the stack.
 // The second return value is the full node instance, which may be nil if the
 // node is running as a light client.
-func RegisterEthService(stack *node.Node, cfg *ethconfig.Config) (ethapi.Backend, *eth.Ethereum) {
+func RegisterEthService(stack *node.Node, cfg *ethconfig.Config, rcfg *custom.WriteStreamConfig) (ethapi.Backend, *eth.Ethereum) {
 	if cfg.SyncMode == downloader.LightSync {
 		backend, err := les.New(stack, cfg)
 		if err != nil {
@@ -1761,7 +1770,7 @@ func RegisterEthService(stack *node.Node, cfg *ethconfig.Config) (ethapi.Backend
 		stack.RegisterAPIs(tracers.APIs(backend.ApiBackend))
 		return backend.ApiBackend, nil
 	}
-	backend, err := eth.New(stack, cfg)
+	backend, err := eth.New(stack, cfg, rcfg)
 	if err != nil {
 		Fatalf("Failed to register the Ethereum service: %v", err)
 	}
@@ -1934,7 +1943,11 @@ func MakeChain(ctx *cli.Context, stack *node.Node) (chain *core.BlockChain, chai
 
 	// TODO(rjl493456442) disable snapshot generation/wiping if the chain is read only.
 	// Disable transaction indexing/unindexing by default.
-	chain, err = core.NewBlockChain(chainDb, cache, config, engine, vmcfg, nil, nil)
+	pubsubConfig := &custom.WriteStreamConfig{
+		Topic: ctx.GlobalString(PubsubTopicFlag.Name),
+		ProjectID: ctx.GlobalString(PubsubProjectIDFlag.Name),
+	}
+	chain, err = core.NewBlockChain(chainDb, cache, config, engine, vmcfg, nil, nil, pubsubConfig)
 	if err != nil {
 		Fatalf("Can't create BlockChain: %v", err)
 	}

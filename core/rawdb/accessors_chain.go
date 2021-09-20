@@ -23,6 +23,7 @@ import (
 	"sort"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/custom"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -649,6 +650,22 @@ func ReadBlock(db ethdb.Reader, hash common.Hash, number uint64) *types.Block {
 	return types.NewBlockWithHeader(header).WithBody(body.Transactions, body.Uncles)
 }
 
+func WriteRDBBlocks(config *params.ChainConfig, rdb *custom.WriteStream, blocks types.Blocks, receipts []types.Receipts) {
+	for i, block := range blocks {
+		WriteRDBBlock(config, rdb, block, receipts[i])
+	}
+}
+
+func WriteRDBBlock(config *params.ChainConfig, rdb *custom.WriteStream,block *types.Block, receipts types.Receipts) {
+	signer := types.MakeSigner(config, block.Number())
+
+	err := receipts.DeriveFields(config, block.Hash(), block.Number().Uint64(), block.Transactions())
+	if err != nil {
+		log.Crit("Error deriving fields", "block", block.Number(), "receips", receipts.Len())
+	}
+
+	rdb.WriteAll(signer, block, receipts)
+}
 // WriteBlock serializes a block into the database, header and body separately.
 func WriteBlock(db ethdb.KeyValueWriter, block *types.Block) {
 	WriteBody(db, block.Hash(), block.NumberU64(), block.Body())

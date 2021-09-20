@@ -28,6 +28,7 @@ import (
 	"gopkg.in/urfave/cli.v1"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
+	"github.com/ethereum/go-ethereum/core/custom"
 	"github.com/ethereum/go-ethereum/eth/catalyst"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
@@ -43,7 +44,7 @@ var (
 		Name:        "dumpconfig",
 		Usage:       "Show configuration values",
 		ArgsUsage:   "",
-		Flags:       append(nodeFlags, rpcFlags...),
+		Flags:       append(append(nodeFlags, rpcFlags...), pubsubFlags...),
 		Category:    "MISCELLANEOUS COMMANDS",
 		Description: `The dumpconfig command shows configuration values.`,
 	}
@@ -144,7 +145,11 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	if ctx.GlobalIsSet(utils.OverrideBerlinFlag.Name) {
 		cfg.Eth.OverrideBerlin = new(big.Int).SetUint64(ctx.GlobalUint64(utils.OverrideBerlinFlag.Name))
 	}
-	backend, eth := utils.RegisterEthService(stack, &cfg.Eth)
+	pubsubConfig := &custom.WriteStreamConfig{
+		Topic: ctx.GlobalString(utils.PubsubTopicFlag.Name),
+		ProjectID: ctx.GlobalString(utils.PubsubProjectIDFlag.Name),
+	}
+	backend, eth := utils.RegisterEthService(stack, &cfg.Eth, pubsubConfig)
 
 	// Configure catalyst.
 	if ctx.GlobalBool(utils.CatalystFlag.Name) {

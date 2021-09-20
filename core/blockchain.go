@@ -32,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/common/prque"
 	"github.com/ethereum/go-ethereum/consensus"
+  "github.com/ethereum/go-ethereum/core/custom"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
@@ -141,6 +142,9 @@ var defaultCacheConfig = &CacheConfig{
 	TriesInMemory:  128,
 	SnapshotWait:   true,
 }
+var defaultWriteStreamConfig = &custom.WriteStreamConfig{
+	ProjectID: "localhost:3333",
+}
 
 // BlockChain represents the canonical chain given a database with a genesis
 // block. The Blockchain manages chain imports, reverts, chain reorganisations.
@@ -157,6 +161,7 @@ var defaultCacheConfig = &CacheConfig{
 // included in the canonical one where as GetBlockByNumber always represents the
 // canonical chain.
 type BlockChain struct {
+	ws         *custom.WriteStream
 	chainConfig *params.ChainConfig // Chain & network configuration
 	cacheConfig *CacheConfig        // Cache configuration for pruning
 
@@ -213,9 +218,12 @@ type BlockChain struct {
 // NewBlockChain returns a fully initialised block chain using information
 // available in the database. It initialises the default Ethereum Validator and
 // Processor.
-func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *params.ChainConfig, engine consensus.Engine, vmConfig vm.Config, shouldPreserve func(block *types.Block) bool, txLookupLimit *uint64) (*BlockChain, error) {
+func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *params.ChainConfig, engine consensus.Engine, vmConfig vm.Config, shouldPreserve func(block *types.Block) bool, txLookupLimit *uint64, wsCfg *custom.WriteStreamConfig) (*BlockChain, error) {
 	if cacheConfig == nil {
 		cacheConfig = defaultCacheConfig
+	}
+  if wsCfg == nil {
+		wsCfg = defaultWriteStreamConfig
 	}
 	if cacheConfig.TriesInMemory != 128 {
 		log.Warn("TriesInMemory isn't the default value(128), you need specify exact same TriesInMemory when prune data", "triesInMemory", cacheConfig.TriesInMemory)
@@ -228,6 +236,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	futureBlocks, _ := lru.New(maxFutureBlocks)
 
 	bc := &BlockChain{
+		ws:         custom.NewWriteStream(wsCfg),
 		chainConfig: chainConfig,
 		cacheConfig: cacheConfig,
 		db:          db,
@@ -1413,6 +1422,8 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 	if stats.ignored > 0 {
 		context = append(context, []interface{}{"ignored", stats.ignored}...)
 	}
+  rawdb.WriteRDBBlocks(bc.chainConfig, bc.ws, blockChain, receiptChain)
+
 	log.Info("Imported new block receipts", context...)
 
 	return 0, nil
@@ -1926,6 +1937,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 
 		// Write the block to the chain and get the status.
 		substart = time.Now()
+		rawdb.WriteRDBBlock(bc.chainConfig, bc.ws, block, receipts)
 		status, err := bc.writeBlockWithState(block, receipts, logs, statedb, false)
 		if err != nil {
 			return it.index, err
